@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>🔫 Bullet Echo · 暗影回聲 (全區開火)</title>
+  <title>🔫 Bullet Echo · 暗影回聲 (支援滑鼠)</title>
   <style>
     * {
       box-sizing: border-box;
@@ -185,7 +185,7 @@
 
     let shootCooldown = 0;
 
-    // 搖桿設定：觸碰範圍內即開火，無需中心小圈
+    // 搖桿設定
     const joystick = {
       active: false,
       originX: 0, originY: 0,
@@ -549,13 +549,14 @@
       if (player.hp<=0) { gameActive=false; gameOver=true; }
     }
 
-    function getCanvasPos(touch) {
+    // 將螢幕座標轉為畫布邏輯座標
+    function getCanvasPos(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
       return {
-        x: (touch.clientX - rect.left) * scaleX,
-        y: (touch.clientY - rect.top) * scaleY
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
       };
     }
 
@@ -565,6 +566,7 @@
       return Math.hypot(dx, dy);
     }
 
+    // 根據位置更新搖桿向量與開火狀態
     function updateJoystickFromPos(pos) {
       const dx = pos.x - joystick.centerX;
       const dy = pos.y - joystick.centerY;
@@ -576,14 +578,14 @@
         joystick.vectorX = (dx/dist) * limited;
         joystick.vectorY = (dy/dist) * limited;
       }
-      // 關鍵：只要在搖桿區域內就開火
-      shootPressed = true;
+      shootPressed = true;  // 只要在搖桿區域內就開火
     }
 
+    // ---------- 觸碰事件 (手機) ----------
     function handleTouchStart(e) {
       e.preventDefault();
       for (let touch of e.touches) {
-        const pos = getCanvasPos(touch);
+        const pos = getCanvasPos(touch.clientX, touch.clientY);
         const dist = distanceToJoystickCenter(pos);
         if (dist <= joystick.activateRadius) {
           joystick.active = true;
@@ -601,7 +603,7 @@
       let bestDist = Infinity;
       let bestPos = null;
       for (let touch of e.touches) {
-        const pos = getCanvasPos(touch);
+        const pos = getCanvasPos(touch.clientX, touch.clientY);
         const dist = distanceToJoystickCenter(pos);
         if (dist < bestDist) {
           bestDist = dist;
@@ -619,7 +621,7 @@
       e.preventDefault();
       let stillActive = false;
       for (let touch of e.touches) {
-        const pos = getCanvasPos(touch);
+        const pos = getCanvasPos(touch.clientX, touch.clientY);
         if (distanceToJoystickCenter(pos) <= joystick.activateRadius) {
           stillActive = true;
           break;
@@ -632,10 +634,55 @@
       }
     }
 
+    // ---------- 滑鼠事件 (電腦) ----------
+    function handleMouseDown(e) {
+      e.preventDefault();
+      const pos = getCanvasPos(e.clientX, e.clientY);
+      const dist = distanceToJoystickCenter(pos);
+      if (dist <= joystick.activateRadius) {
+        joystick.active = true;
+        joystick.originX = pos.x;
+        joystick.originY = pos.y;
+        updateJoystickFromPos(pos);
+      }
+    }
+
+    function handleMouseMove(e) {
+      if (!joystick.active) return;
+      // 僅在滑鼠左鍵按住時才追蹤
+      if (e.buttons !== 1) {
+        // 如果放開了左鍵但沒有觸發 mouseup (例如瀏覽器問題)，強制關閉
+        joystick.active = false;
+        joystick.vectorX = 0; joystick.vectorY = 0;
+        shootPressed = false;
+        return;
+      }
+      const pos = getCanvasPos(e.clientX, e.clientY);
+      const dist = distanceToJoystickCenter(pos);
+      if (dist <= joystick.activateRadius + 40) {
+        updateJoystickFromPos(pos);
+      } else {
+        shootPressed = false;
+      }
+    }
+
+    function handleMouseUp(e) {
+      joystick.active = false;
+      joystick.vectorX = 0; joystick.vectorY = 0;
+      shootPressed = false;
+    }
+
+    function handleMouseLeave(e) {
+      // 滑鼠離開畫布時強制停止
+      joystick.active = false;
+      joystick.vectorX = 0; joystick.vectorY = 0;
+      shootPressed = false;
+    }
+
+    // ---------- 繪圖 ----------
     function drawUI() {
       const jcx = joystick.centerX, jcy = joystick.centerY;
       
-      // 搖桿底盤，根據開火狀態變色
       ctx.beginPath();
       ctx.arc(jcx, jcy, 130, 0, 2*Math.PI);
       ctx.fillStyle = shootPressed ? '#3a5060c0' : '#1e2a36c0';
@@ -644,7 +691,6 @@
       ctx.fill();
       ctx.stroke();
       
-      // 搖桿頭
       const stickX = jcx + joystick.vectorX * joystick.maxDist;
       const stickY = jcy + joystick.vectorY * joystick.maxDist;
       ctx.beginPath();
@@ -755,10 +801,18 @@
       updateDisplay();
     }
 
+    // 綁定觸摸事件
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvas.addEventListener('touchend', handleTouchEnd);
     canvas.addEventListener('touchcancel', handleTouchEnd);
+    
+    // 綁定滑鼠事件
+    canvas.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove); // 使用window捕捉移動更順暢
+    window.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('mouseleave', handleMouseLeave);
+    
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     restartBtn.addEventListener('click', restartGame);
 
