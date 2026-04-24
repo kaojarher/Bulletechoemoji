@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>🔫 Bullet Echo · 暗影回聲 (重新武裝置頂)</title>
+  <title>🔫 Bullet Echo · 暗影回聲 (全區開火)</title>
   <style>
     * {
       box-sizing: border-box;
@@ -40,7 +40,6 @@
       object-fit: contain;
       touch-action: none;
     }
-    /* 狀態列下移，為頂部按鈕留出空間 */
     .status-row {
       position: absolute;
       top: 60px;
@@ -66,7 +65,6 @@
       border: 1px solid #c9aa7b;
       backdrop-filter: blur(2px);
     }
-    /* 重新武裝按鈕移至最上方 */
     button {
       position: absolute;
       top: 12px;
@@ -125,7 +123,6 @@
     const weaponName = document.getElementById('weaponName');
     const restartBtn = document.getElementById('restartButton');
 
-    // 豎屏邏輯尺寸
     const W = 700, H = 1200;
     canvas.width = W; canvas.height = H;
 
@@ -188,6 +185,7 @@
 
     let shootCooldown = 0;
 
+    // 搖桿設定：觸碰範圍內即開火，無需中心小圈
     const joystick = {
       active: false,
       originX: 0, originY: 0,
@@ -195,7 +193,6 @@
       maxDist: 96,
       centerX: W * 0.5,
       centerY: H - 180,
-      fireRadius: 44,
       activateRadius: 220
     };
     let shootPressed = false;
@@ -579,7 +576,8 @@
         joystick.vectorX = (dx/dist) * limited;
         joystick.vectorY = (dy/dist) * limited;
       }
-      shootPressed = (dist <= joystick.fireRadius);
+      // 關鍵：只要在搖桿區域內就開火
+      shootPressed = true;
     }
 
     function handleTouchStart(e) {
@@ -637,22 +635,16 @@
     function drawUI() {
       const jcx = joystick.centerX, jcy = joystick.centerY;
       
+      // 搖桿底盤，根據開火狀態變色
       ctx.beginPath();
       ctx.arc(jcx, jcy, 130, 0, 2*Math.PI);
-      ctx.fillStyle = '#1e2a36c0';
+      ctx.fillStyle = shootPressed ? '#3a5060c0' : '#1e2a36c0';
       ctx.strokeStyle = '#b9a98a';
       ctx.lineWidth = 4;
       ctx.fill();
       ctx.stroke();
       
-      ctx.beginPath();
-      ctx.arc(jcx, jcy, joystick.fireRadius, 0, 2*Math.PI);
-      ctx.fillStyle = shootPressed ? '#ff444488' : '#66666644';
-      ctx.fill();
-      ctx.strokeStyle = '#ffcc88';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      
+      // 搖桿頭
       const stickX = jcx + joystick.vectorX * joystick.maxDist;
       const stickY = jcy + joystick.vectorY * joystick.maxDist;
       ctx.beginPath();
@@ -670,8 +662,7 @@
       ctx.fillStyle = '#f0e0c0';
       ctx.shadowBlur = 10; ctx.shadowColor = '#000';
       ctx.textAlign = 'center';
-      ctx.fillText('←移動→', jcx, jcy - 140);
-      ctx.fillText('開火', jcx, jcy + 140);
+      ctx.fillText('移動+開火', jcx, jcy - 140);
       ctx.shadowBlur = 0;
     }
 
