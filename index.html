@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>🔫 Bullet Echo · 暗影回聲 (支援滑鼠)</title>
+  <title>🔫 Bullet Echo · 暗影回聲 (角色選擇)</title>
   <style>
     * {
       box-sizing: border-box;
@@ -40,6 +40,17 @@
       object-fit: contain;
       touch-action: none;
     }
+    .top-ui {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 20;
+      pointer-events: none;
+    }
     .status-row {
       position: absolute;
       top: 60px;
@@ -66,10 +77,6 @@
       backdrop-filter: blur(2px);
     }
     button {
-      position: absolute;
-      top: 12px;
-      left: 50%;
-      transform: translateX(-50%);
       background: #2f3e55;
       border: none;
       color: white;
@@ -83,10 +90,10 @@
       backdrop-filter: blur(4px);
       background: #2e425bb0;
       touch-action: manipulation;
-      z-index: 20;
+      pointer-events: auto;
     }
     button:active {
-      transform: translateX(-50%) translateY(4px);
+      transform: translateY(4px);
       box-shadow: 0 3px 0 #0f141c, 0 2px 8px black;
     }
   </style>
@@ -95,7 +102,11 @@
 <div class="game-container">
   <canvas id="gameCanvas" width="700" height="1200"></canvas>
   
-  <div class="status-row">
+  <div class="top-ui">
+    <button id="restartButton">💀 重新武裝</button>
+  </div>
+  
+  <div class="status-row" id="statusRow">
     <div class="hp-box">
       <span>❤️</span> <span id="hpDisplay">5</span>
     </div>
@@ -106,8 +117,6 @@
       <span>🎯</span> <span id="scoreDisplay">0</span>
     </div>
   </div>
-  
-  <button id="restartButton">💀 重新武裝 💀</button>
 </div>
 
 <script>
@@ -122,22 +131,72 @@
     const weaponEmoji = document.getElementById('weaponEmoji');
     const weaponName = document.getElementById('weaponName');
     const restartBtn = document.getElementById('restartButton');
+    const statusRow = document.getElementById('statusRow');
 
     const W = 700, H = 1200;
     canvas.width = W; canvas.height = H;
 
-    let gameActive = true;
-    let gameOver = false;
+    // 遊戲狀態：selecting, playing, gameover
+    let gameState = 'selecting'; 
+    let gameActive = false;
     let frame;
+
+    // 角色定義
+    const characters = [
+      {
+        id: 'assault',
+        name: '突擊兵',
+        emoji: '🤠',
+        desc: '均衡戰力',
+        initialWeapon: 'pistol',
+        hp: 5,
+        speed: 4.8,
+        color: '#3ad1ff'
+      },
+      {
+        id: 'heavy',
+        name: '重裝兵',
+        emoji: '🦍',
+        desc: '高血量・霰彈',
+        initialWeapon: 'shotgun',
+        hp: 8,
+        speed: 3.8,
+        color: '#cc8844'
+      },
+      {
+        id: 'scout',
+        name: '偵察兵',
+        emoji: '🏃',
+        desc: '高速移動',
+        initialWeapon: 'machinegun',
+        hp: 4,
+        speed: 6.0,
+        color: '#66ff66'
+      },
+      {
+        id: 'sniper',
+        name: '狙擊手',
+        emoji: '🎯',
+        desc: '高傷害步槍',
+        initialWeapon: 'rifle',
+        hp: 4,
+        speed: 4.2,
+        color: '#ffaa00'
+      }
+    ];
+
+    let selectedCharacter = null;
 
     const player = {
       x: 350, y: 600,
       r: 18,
       hp: 5,
+      maxHp: 5,
       speed: 4.8,
       invincible: false,
       invTimer: 0,
-      currentWeapon: 'pistol'
+      currentWeapon: 'pistol',
+      character: null
     };
 
     const weaponTypes = {
@@ -185,7 +244,6 @@
 
     let shootCooldown = 0;
 
-    // 搖桿設定
     const joystick = {
       active: false,
       originX: 0, originY: 0,
@@ -214,31 +272,36 @@
       { name: '爆炸', emoji: '💣', hp: 1, speed: 1.5,  r: 19, score: 20, color: '#ff3333', explode: true }
     ];
 
-    function initWorld() {
-      player.x = 350; player.y = 600;
-      player.hp = 5;
+    function startGameWithCharacter(char) {
+      selectedCharacter = char;
+      player.character = char;
+      player.currentWeapon = char.initialWeapon;
+      player.hp = char.hp;
+      player.maxHp = char.hp;
+      player.speed = char.speed;
       player.invincible = false;
       player.invTimer = 0;
-      player.currentWeapon = 'pistol';
       
+      player.x = 350; player.y = 600;
       bullets = [];
       enemies = [];
       pickups = [];
       score = 0;
-      updateDisplay();
       
       generateObstacles();
-      
       for (let i = 0; i < 3; i++) spawnEnemyImmediate();
       
       shootCooldown = 0;
       enemySpawnTimer = ENEMY_SPAWN_RATE;
       gameActive = true;
-      gameOver = false;
+      gameState = 'playing';
       
       joystick.active = false;
       joystick.vectorX = 0; joystick.vectorY = 0;
       shootPressed = false;
+      
+      updateDisplay();
+      statusRow.style.display = 'flex';
     }
 
     function generateObstacles() {
@@ -371,7 +434,7 @@
       updateDisplay();
       if (player.hp <= 0) {
         gameActive = false;
-        gameOver = true;
+        gameState = 'gameover';
       }
     }
 
@@ -520,7 +583,7 @@
           e.x += Math.cos(ang)*30; e.y += Math.sin(ang)*30;
           const res = resolveEnemyCollision(e, e.x, e.y, i);
           e.x = res.x; e.y = res.y;
-          if (player.hp<=0) { gameActive=false; gameOver=true; break; }
+          if (player.hp<=0) { gameActive=false; gameState='gameover'; break; }
         }
       }
       
@@ -546,10 +609,9 @@
         } else enemySpawnTimer--;
       }
       
-      if (player.hp<=0) { gameActive=false; gameOver=true; }
+      if (player.hp<=0) { gameActive=false; gameState='gameover'; }
     }
 
-    // 將螢幕座標轉為畫布邏輯座標
     function getCanvasPos(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
@@ -566,7 +628,6 @@
       return Math.hypot(dx, dy);
     }
 
-    // 根據位置更新搖桿向量與開火狀態
     function updateJoystickFromPos(pos) {
       const dx = pos.x - joystick.centerX;
       const dy = pos.y - joystick.centerY;
@@ -578,86 +639,29 @@
         joystick.vectorX = (dx/dist) * limited;
         joystick.vectorY = (dy/dist) * limited;
       }
-      shootPressed = true;  // 只要在搖桿區域內就開火
+      shootPressed = true;
     }
 
-    // ---------- 觸碰事件 (手機) ----------
-    function handleTouchStart(e) {
-      e.preventDefault();
-      for (let touch of e.touches) {
-        const pos = getCanvasPos(touch.clientX, touch.clientY);
+    // 事件處理：根據遊戲狀態分發
+    function handleStart(e, clientX, clientY) {
+      if (gameState === 'selecting') {
+        const pos = getCanvasPos(clientX, clientY);
+        checkCharacterSelection(pos);
+        return;
+      }
+      if (gameState === 'playing') {
+        const pos = getCanvasPos(clientX, clientY);
         const dist = distanceToJoystickCenter(pos);
         if (dist <= joystick.activateRadius) {
           joystick.active = true;
-          joystick.originX = pos.x;
-          joystick.originY = pos.y;
           updateJoystickFromPos(pos);
-          break;
         }
       }
     }
 
-    function handleTouchMove(e) {
-      e.preventDefault();
-      if (!joystick.active) return;
-      let bestDist = Infinity;
-      let bestPos = null;
-      for (let touch of e.touches) {
-        const pos = getCanvasPos(touch.clientX, touch.clientY);
-        const dist = distanceToJoystickCenter(pos);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestPos = pos;
-        }
-      }
-      if (bestPos && bestDist <= joystick.activateRadius + 40) {
-        updateJoystickFromPos(bestPos);
-      } else {
-        shootPressed = false;
-      }
-    }
-
-    function handleTouchEnd(e) {
-      e.preventDefault();
-      let stillActive = false;
-      for (let touch of e.touches) {
-        const pos = getCanvasPos(touch.clientX, touch.clientY);
-        if (distanceToJoystickCenter(pos) <= joystick.activateRadius) {
-          stillActive = true;
-          break;
-        }
-      }
-      if (!stillActive) {
-        joystick.active = false;
-        joystick.vectorX = 0; joystick.vectorY = 0;
-        shootPressed = false;
-      }
-    }
-
-    // ---------- 滑鼠事件 (電腦) ----------
-    function handleMouseDown(e) {
-      e.preventDefault();
-      const pos = getCanvasPos(e.clientX, e.clientY);
-      const dist = distanceToJoystickCenter(pos);
-      if (dist <= joystick.activateRadius) {
-        joystick.active = true;
-        joystick.originX = pos.x;
-        joystick.originY = pos.y;
-        updateJoystickFromPos(pos);
-      }
-    }
-
-    function handleMouseMove(e) {
-      if (!joystick.active) return;
-      // 僅在滑鼠左鍵按住時才追蹤
-      if (e.buttons !== 1) {
-        // 如果放開了左鍵但沒有觸發 mouseup (例如瀏覽器問題)，強制關閉
-        joystick.active = false;
-        joystick.vectorX = 0; joystick.vectorY = 0;
-        shootPressed = false;
-        return;
-      }
-      const pos = getCanvasPos(e.clientX, e.clientY);
+    function handleMove(e, clientX, clientY) {
+      if (gameState !== 'playing' || !joystick.active) return;
+      const pos = getCanvasPos(clientX, clientY);
       const dist = distanceToJoystickCenter(pos);
       if (dist <= joystick.activateRadius + 40) {
         updateJoystickFromPos(pos);
@@ -666,21 +670,97 @@
       }
     }
 
-    function handleMouseUp(e) {
-      joystick.active = false;
-      joystick.vectorX = 0; joystick.vectorY = 0;
-      shootPressed = false;
+    function handleEnd() {
+      if (gameState === 'playing') {
+        joystick.active = false;
+        joystick.vectorX = 0; joystick.vectorY = 0;
+        shootPressed = false;
+      }
     }
 
-    function handleMouseLeave(e) {
-      // 滑鼠離開畫布時強制停止
-      joystick.active = false;
-      joystick.vectorX = 0; joystick.vectorY = 0;
-      shootPressed = false;
+    // 角色選擇點擊檢測
+    function checkCharacterSelection(pos) {
+      const cardW = 280, cardH = 180;
+      const startX = (W - cardW) / 2;
+      const startY = 300;
+      const gap = 30;
+      for (let i = 0; i < characters.length; i++) {
+        const y = startY + i * (cardH + gap);
+        if (pos.x >= startX && pos.x <= startX + cardW &&
+            pos.y >= y && pos.y <= y + cardH) {
+          startGameWithCharacter(characters[i]);
+          break;
+        }
+      }
     }
 
-    // ---------- 繪圖 ----------
+    // 繪製角色選擇界面
+    function drawSelectionScreen() {
+      ctx.fillStyle = '#0b1016';
+      ctx.fillRect(0, 0, W, H);
+      
+      ctx.font = 'bold 42px "Segoe UI"';
+      ctx.fillStyle = '#f0e0c0';
+      ctx.shadowBlur = 16; ctx.shadowColor = '#000';
+      ctx.textAlign = 'center';
+      ctx.fillText('選擇特工', W/2, 120);
+      
+      ctx.font = '20px "Segoe UI"';
+      ctx.fillText('點擊角色卡開始任務', W/2, 180);
+      ctx.shadowBlur = 0;
+      
+      const cardW = 280, cardH = 180;
+      const startX = (W - cardW) / 2;
+      const startY = 300;
+      const gap = 30;
+      
+      for (let i = 0; i < characters.length; i++) {
+        const char = characters[i];
+        const y = startY + i * (cardH + gap);
+        
+        ctx.fillStyle = '#1e2a36e0';
+        ctx.strokeStyle = char.color;
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 14; ctx.shadowColor = '#000';
+        ctx.beginPath();
+        ctx.roundRect(startX, y, cardW, cardH, 20);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '52px "Segoe UI Emoji"';
+        ctx.textAlign = 'center';
+        ctx.fillText(char.emoji, startX + cardW/2, y + 60);
+        
+        ctx.font = 'bold 24px "Segoe UI"';
+        ctx.fillText(char.name, startX + cardW/2, y + 100);
+        
+        ctx.font = '16px "Segoe UI"';
+        ctx.fillStyle = '#cccccc';
+        ctx.fillText(char.desc + ' · 血量' + char.hp, startX + cardW/2, y + 130);
+      }
+    }
+
+    // 添加roundRect輔助
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      if (w < 2 * r) r = w / 2;
+      if (h < 2 * r) r = h / 2;
+      this.moveTo(x + r, y);
+      this.lineTo(x + w - r, y);
+      this.quadraticCurveTo(x + w, y, x + w, y + r);
+      this.lineTo(x + w, y + h - r);
+      this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      this.lineTo(x + r, y + h);
+      this.quadraticCurveTo(x, y + h, x, y + h - r);
+      this.lineTo(x, y + r);
+      this.quadraticCurveTo(x, y, x + r, y);
+      this.closePath();
+      return this;
+    };
+
     function drawUI() {
+      if (gameState !== 'playing') return;
       const jcx = joystick.centerX, jcy = joystick.centerY;
       
       ctx.beginPath();
@@ -712,9 +792,25 @@
       ctx.shadowBlur = 0;
     }
 
+    function drawGameOver() {
+      ctx.fillStyle = '#000000cc';
+      ctx.fillRect(0, 0, W, H);
+      ctx.font = 'bold 48px "Segoe UI"';
+      ctx.fillStyle = '#f0c0a0';
+      ctx.shadowBlur = 20; ctx.textAlign = 'center';
+      ctx.fillText('💀 任務失敗 💀', W/2, H/2-30);
+      ctx.font = '32px sans-serif';
+      ctx.fillText('得分: '+score, W/2, H/2+40);
+      ctx.shadowBlur = 0;
+    }
+
     function draw() {
-      ctx.clearRect(0, 0, W, H);
+      if (gameState === 'selecting') {
+        drawSelectionScreen();
+        return;
+      }
       
+      ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = '#0b1016'; ctx.fillRect(0,0,W,H);
       ctx.strokeStyle = '#1f2e3f'; ctx.lineWidth = 0.6;
       for (let i=0; i<W; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,H); ctx.stroke(); }
@@ -750,10 +846,10 @@
       
       let drawPlayer = true;
       if (player.invincible && (Math.floor(Date.now()/100)%2===0)) drawPlayer=false;
-      if (drawPlayer) {
-        ctx.shadowBlur=30; ctx.shadowColor='#3ad1ff';
+      if (drawPlayer && player.character) {
+        ctx.shadowBlur=30; ctx.shadowColor=player.character.color;
         ctx.font='46px "Segoe UI Emoji"';
-        ctx.fillText('🤠', player.x, player.y-2);
+        ctx.fillText(player.character.emoji, player.x, player.y-2);
         ctx.font='28px "Segoe UI Emoji"';
         ctx.fillText(weaponTypes[player.currentWeapon].emoji, player.x+4, player.y-14);
       }
@@ -778,46 +874,66 @@
       ctx.fillStyle=grad; ctx.globalCompositeOperation='overlay'; ctx.fillRect(0,0,W,H);
       ctx.globalCompositeOperation='source-over';
       
-      if (!gameActive && gameOver) {
-        ctx.fillStyle='#000000cc'; ctx.fillRect(0,0,W,H);
-        ctx.font='bold 48px "Segoe UI"'; ctx.fillStyle='#f0c0a0';
-        ctx.shadowBlur=20; ctx.textAlign='center';
-        ctx.fillText('💀 任務失敗 💀', W/2, H/2-30);
-        ctx.font='32px sans-serif'; ctx.fillText('得分: '+score, W/2, H/2+40);
-        ctx.shadowBlur=0;
-      }
-      
+      if (gameState === 'gameover') drawGameOver();
       drawUI();
     }
 
     function gameLoop() {
-      if (gameActive) update();
+      if (gameState === 'playing') update();
       draw();
       frame = requestAnimationFrame(gameLoop);
     }
 
     function restartGame() {
-      initWorld();
-      updateDisplay();
+      gameActive = false;
+      gameState = 'selecting';
+      joystick.active = false;
+      joystick.vectorX = 0; joystick.vectorY = 0;
+      shootPressed = false;
+      bullets = [];
+      enemies = [];
+      pickups = [];
+      statusRow.style.display = 'none';
     }
 
-    // 綁定觸摸事件
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchend', handleTouchEnd);
-    canvas.addEventListener('touchcancel', handleTouchEnd);
-    
-    // 綁定滑鼠事件
-    canvas.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mousemove', handleMouseMove); // 使用window捕捉移動更順暢
-    window.addEventListener('mouseup', handleMouseUp);
-    canvas.addEventListener('mouseleave', handleMouseLeave);
-    
+    // 統一事件監聽
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      for (let touch of e.touches) {
+        handleStart(e, touch.clientX, touch.clientY);
+        break;
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (gameState !== 'playing') return;
+      for (let touch of e.touches) {
+        handleMove(e, touch.clientX, touch.clientY);
+        break;
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchend', handleEnd);
+    canvas.addEventListener('touchcancel', handleEnd);
+
+    canvas.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      handleStart(e, e.clientX, e.clientY);
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (gameState !== 'playing') return;
+      if (e.buttons !== 1) {
+        handleEnd();
+        return;
+      }
+      handleMove(e, e.clientX, e.clientY);
+    });
+    window.addEventListener('mouseup', handleEnd);
+    canvas.addEventListener('mouseleave', handleEnd);
     canvas.addEventListener('contextmenu', e => e.preventDefault());
+    
     restartBtn.addEventListener('click', restartGame);
 
-    initWorld();
-    updateDisplay();
+    statusRow.style.display = 'none';
     frame = requestAnimationFrame(gameLoop);
   })();
 </script>
